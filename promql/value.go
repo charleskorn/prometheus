@@ -25,10 +25,12 @@ import (
 	"github.com/apache/arrow/go/arrow/array"
 	"github.com/apache/arrow/go/arrow/ipc"
 	"github.com/apache/arrow/go/arrow/memory"
+	io2 "github.com/gogo/protobuf/io"
 
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
+	"github.com/prometheus/prometheus/promql/querypb"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunkenc"
 )
@@ -341,6 +343,55 @@ func (m Matrix) WriteArrow(w io.Writer) error {
 // building a custom type in Arrow for histograms, or return a different schema
 // for native histograms
 func (m Matrix) ArrowEncodeable() bool {
+	for _, s := range m {
+		if len(s.Points) > 0 && s.Points[0].H != nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (m Matrix) WriteProtobuf(w io.Writer) error {
+	convertedSeries := make([]querypb.MatrixSeries, m.Len())
+
+	for seriesIdx, series := range m {
+		metric := make([]string, len(series.Metric)*2)
+
+		for labelIdx, l := range series.Metric {
+			metric[2*labelIdx] = l.Name
+			metric[2*labelIdx+1] = l.Value
+		}
+
+		samples := make([]querypb.MatrixSample, len(series.Points))
+
+		for sampleIdx, s := range series.Points {
+			samples[sampleIdx] = querypb.MatrixSample{
+				Value:     s.V,
+				Timestamp: s.T,
+			}
+		}
+
+		convertedSeries[seriesIdx] = querypb.MatrixSeries{
+			Metric:  metric,
+			Samples: samples,
+		}
+	}
+
+	p := querypb.MatrixData{
+		Series: convertedSeries,
+	}
+
+	protoWriter := io2.NewFullWriter(w)
+	defer protoWriter.Close()
+	if err := protoWriter.WriteMsg(&p); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (m Matrix) ProtobufEncodeable() bool {
 	for _, s := range m {
 		if len(s.Points) > 0 && s.Points[0].H != nil {
 			return false

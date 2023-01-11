@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Generate the Golang code for this with:
+// protoc --gogoslick_out=. -I=/Users/charleskorn/Repositories/Grafana/mimir/vendor/ -I. query_response.proto
+
+syntax = "proto3";
+
+package querypb;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+// HACK
+// I've thrown this definition together without thinking too deeply about it.
+// Things we'd need to consider, but I haven't thought through:
+// - forwards compatibility considerations if we ever need to add or change this
+// - any protobuf gotchas (I haven't used protobuf for a few years)
+
+// TODO: annotate fields with gogoproto.nullable = false where appropriate
+
+message MatrixData {
+  repeated MatrixSeries Series = 1 [(gogoproto.nullable) = false];
+}
+
+message MatrixSeries {
+  // Why not use a map<...> here? We want to preserve the order of the labels.
+  repeated string Metric = 1;
+
+  repeated MatrixSample Samples = 2 [(gogoproto.nullable) = false];
+}
+
+message MatrixSample {
+  double Value = 1;
+
+  // TODO: is there a better type to use here?
+  int64 Timestamp = 2; // milliseconds
+}

@@ -81,6 +81,7 @@ const (
 var LocalhostRepresentations = []string{"127.0.0.1", "localhost", "::1"}
 
 const mimeTypeArrowStream = "application/vnd.apache.arrow.stream"
+const mimeTypeProtobuf = "application/protobuf"
 
 type apiError struct {
 	typ errorType
@@ -1534,6 +1535,11 @@ type arrowWriter interface {
 	ArrowEncodeable() bool
 }
 
+type protobufWriter interface {
+	WriteProtobuf(io.Writer) error
+	ProtobufEncodeable() bool
+}
+
 func (api *API) tryArrowResponse(w http.ResponseWriter, r *http.Request, data interface{}, warnings storage.Warnings) error {
 	result, ok := data.(*queryData)
 	if !ok {
@@ -1557,6 +1563,29 @@ func (api *API) tryArrowResponse(w http.ResponseWriter, r *http.Request, data in
 	return nil
 }
 
+func (api *API) tryProtobufResponse(w http.ResponseWriter, r *http.Request, data interface{}, warnings storage.Warnings) error {
+	result, ok := data.(*queryData)
+	if !ok {
+		return fmt.Errorf("invalid result data type: %T", data)
+	}
+
+	protobufWriter, ok := result.Result.(protobufWriter)
+	if !ok {
+		return errors.Errorf("protobuf not implemented for %s", result.ResultType)
+	}
+
+	if !protobufWriter.ProtobufEncodeable() {
+		return fmt.Errorf("could not encode this result with protobuf")
+	}
+
+	w.Header().Set("Content-Type", mimeTypeProtobuf)
+	w.WriteHeader(http.StatusOK)
+	if err := protobufWriter.WriteProtobuf(w); err != nil {
+		level.Error(api.logger).Log("msg", "error writing protobuf response", "err", err)
+	}
+	return nil
+}
+
 func (api *API) respond(w http.ResponseWriter, r *http.Request, data interface{}, warnings storage.Warnings) {
 	if r.Header.Get("Accept") == mimeTypeArrowStream {
 		err := api.tryArrowResponse(w, r, data, warnings)
@@ -1564,6 +1593,14 @@ func (api *API) respond(w http.ResponseWriter, r *http.Request, data interface{}
 			return
 		}
 		level.Debug(api.logger).Log("msg", "could not create arrow response", "err", err)
+	}
+
+	if r.Header.Get("Accept") == mimeTypeProtobuf {
+		err := api.tryProtobufResponse(w, r, data, warnings)
+		if err == nil {
+			return
+		}
+		level.Debug(api.logger).Log("msg", "could not create protobuf response", "err", err)
 	}
 
 	statusMessage := statusSuccess

@@ -3403,6 +3403,30 @@ func BenchmarkRespondArrow(b *testing.B) {
 	}
 }
 
+func BenchmarkRespondProto(b *testing.B) {
+	b.ReportAllocs()
+	points := []promql.Point{}
+	for i := 0; i < 10000; i++ {
+		points = append(points, promql.Point{V: float64(i * 1000000), T: int64(i)})
+	}
+	response := &queryData{
+		ResultType: parser.ValueTypeMatrix,
+		Result: promql.Matrix{
+			promql.Series{
+				Points: points,
+				Metric: nil,
+			},
+		},
+	}
+	request, _ := http.NewRequest("GET", "http://localhost:9090", nil)
+	request.Header.Add("Accept", "application/protobuf")
+	b.ResetTimer()
+	api := API{}
+	for n := 0; n < b.N; n++ {
+		api.respond(&testResponseWriter, request, response, nil)
+	}
+}
+
 func TestGetGlobalURL(t *testing.T) {
 	mustParseURL := func(t *testing.T, u string) *url.URL {
 		parsed, err := url.Parse(u)
