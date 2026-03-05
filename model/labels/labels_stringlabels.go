@@ -20,6 +20,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/ajroetker/go-highway/hwy"
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -338,22 +339,18 @@ func Compare(a, b Labels) int {
 	if len(b.data) < len(a.data) {
 		shorter, longer = b.data, a.data
 	}
-	i := 0
-	// First, go 8 bytes at a time. Data strings are expected to be 8-byte aligned.
-	sp := unsafe.Pointer(unsafe.StringData(shorter))
-	lp := unsafe.Pointer(unsafe.StringData(longer))
-	for ; i < len(shorter)-8; i += 8 {
-		if *(*uint64)(unsafe.Add(sp, i)) != *(*uint64)(unsafe.Add(lp, i)) {
-			break
+
+	sv := hwy.LoadSlice([]byte(shorter))
+	lv := hwy.LoadSlice([]byte(longer[:len(shorter)]))
+
+	notEqual := hwy.NotEqual(sv, lv)
+	i := hwy.FindFirstTrue(notEqual)
+
+	if i == -1 {
+		if len(shorter) == len(longer) {
+			return 0
 		}
-	}
-	// Now go 1 byte at a time.
-	for ; i < len(shorter); i++ {
-		if shorter[i] != longer[i] {
-			break
-		}
-	}
-	if i == len(shorter) {
+
 		// One Labels was a prefix of the other; the set with fewer labels compares lower.
 		return len(a.data) - len(b.data)
 	}
