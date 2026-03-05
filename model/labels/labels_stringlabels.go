@@ -20,7 +20,6 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/ajroetker/go-highway/hwy"
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -340,11 +339,7 @@ func Compare(a, b Labels) int {
 		shorter, longer = b.data, a.data
 	}
 
-	sv := hwy.LoadSlice([]byte(shorter))
-	lv := hwy.LoadSlice([]byte(longer[:len(shorter)]))
-
-	notEqual := hwy.NotEqual(sv, lv)
-	i := hwy.FindFirstTrue(notEqual)
+	i := FindFirstDifferentByte([]byte(shorter), []byte(longer))
 
 	if i == -1 {
 		if len(shorter) == len(longer) {
